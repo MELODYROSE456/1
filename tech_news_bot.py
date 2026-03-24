@@ -175,7 +175,7 @@ class TechNewsBot:
         from github_fetcher import GitHubFetcher
         gh_fetcher = GitHubFetcher()
         gh_repos = gh_fetcher.fetch_trending(5)
-        
+        print(f"调试：抓到 {len(stories)} 条 HN，{len(gh_repos)} 个 GitHub")  # ← 加这行！
         # 格式化消息
         content = self.format_message(stories, gh_repos)
         title = f"📰 科技早报 {datetime.now().strftime('%m/%d')} | HN×{len(stories)} GitHub×{len(gh_repos)}"
