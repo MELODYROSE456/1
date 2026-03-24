@@ -10,6 +10,10 @@ import json
 import urllib.parse
 import time
 from datetime import datetime
+# 在原有import下面新增这两行
+from github_fetcher import GitHubFetcher
+from translator import Translator
+from config import SERVER_CHAN_KEY
 
 
 class TechNewsBot:
@@ -110,7 +114,7 @@ class TechNewsBot:
             print(f"抓取 HackerNews 失败: {e}")
             return []
     
-    def format_message(self, stories):
+    def format_message(self, stories, gh_repos=None):  # 加了个参数
         """格式化消息（双语显示）"""
         today = datetime.now().strftime('%Y年%m月%d日')
         
@@ -126,7 +130,15 @@ class TechNewsBot:
             content += f"   🔗 [阅读原文]({story['url']})\n\n"
         
         content += f"\n---\n⏰ 推送时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n🤖 自动翻译推送 | GitHub Actions & MyMemory"
-        
+                # 🆕 在 HackerNews 部分后面，添加 GitHub 部分
+        if gh_repos:
+            content += f"\n### 🚀 GitHub Trending Top {len(gh_repos)}\n\n"
+            for i, repo in enumerate(gh_repos, 1):
+                content += f"{i}. **{repo['name']}**\n"
+                content += f"   📝 {repo['name_en']}\n"
+                content += f"   📄 {repo['desc']}\n"
+                content += f"   💻 {repo['lang']} | ⭐{repo['stars']} | 🔥+{repo['today_stars']}\n"
+                content += f"   🔗 [查看项目]({repo['url']})\n\n"
         return content
     
     def push_to_wechat(self, title, content):
@@ -153,20 +165,23 @@ class TechNewsBot:
             return False
     
     def run(self):
-        """主运行逻辑"""
-        print("🚀 开始抓取并翻译科技新闻...")
-        
-        stories = self.fetch_hackernews(10)
-        
-        if not stories:
-            print("⚠️ 未获取到任何新闻")
-            return False
-        
-        content = self.format_message(stories)
-        title = f"📰 科技早报 {datetime.now().strftime('%m/%d')} | 已翻译 {len(stories)} 条"
-        
-        print(f"📤 正在推送: {title}")
-        return self.push_to_wechat(title, content)
+    """主运行逻辑"""
+    print("🚀 开始抓取并翻译科技新闻...")
+    
+    # 原有：抓取 HackerNews
+    stories = self.fetch_hackernews(10)
+    
+    # 🆕 新增：抓取 GitHub（就加这 3 行！）
+    from github_fetcher import GitHubFetcher
+    gh_fetcher = GitHubFetcher()
+    gh_repos = gh_fetcher.fetch_trending(5)
+    
+    # 修改：传入两个参数
+    content = self.format_message(stories, gh_repos)
+    title = f"📰 科技早报 {datetime.now().strftime('%m/%d')} | HN×{len(stories)} GitHub×{len(gh_repos)}"
+    
+    print(f"📤 正在推送: {title}")
+    return self.push_to_wechat(title, content)
 
 
 if __name__ == '__main__':
