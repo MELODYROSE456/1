@@ -165,23 +165,23 @@ class TechNewsBot:
             return False
     
     def run(self):
-    """主运行逻辑"""
-    print("🚀 开始抓取并翻译科技新闻...")
-    
-    # 原有：抓取 HackerNews
-    stories = self.fetch_hackernews(10)
-    
-    # 🆕 新增：抓取 GitHub（就加这 3 行！）
-    from github_fetcher import GitHubFetcher
-    gh_fetcher = GitHubFetcher()
-    gh_repos = gh_fetcher.fetch_trending(5)
-    
-    # 修改：传入两个参数
-    content = self.format_message(stories, gh_repos)
-    title = f"📰 科技早报 {datetime.now().strftime('%m/%d')} | HN×{len(stories)} GitHub×{len(gh_repos)}"
-    
-    print(f"📤 正在推送: {title}")
-    return self.push_to_wechat(title, content)
+        """主运行逻辑"""
+        print("🚀 开始抓取并翻译科技新闻...")
+        
+        # 抓取 HackerNews
+        stories = self.fetch_hackernews(10)
+        
+        # 新增：抓取 GitHub
+        from github_fetcher import GitHubFetcher
+        gh_fetcher = GitHubFetcher()
+        gh_repos = gh_fetcher.fetch_trending(5)
+        
+        # 格式化消息
+        content = self.format_message(stories, gh_repos)
+        title = f"📰 科技早报 {datetime.now().strftime('%m/%d')} | HN×{len(stories)} GitHub×{len(gh_repos)}"
+        
+        print(f"📤 正在推送: {title}")
+        return self.push_to_wechat(title, content)
 
 
 if __name__ == '__main__':
