@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-每日科技新闻抓取、翻译与推送脚本
-- 抓取 HackerNews Top Stories
-- 自动翻译为中文
-- 通过 Server酱推送到微信
+每日科技新闻抓取、翻译与推送脚本（MyMemory翻译版 - 稳定可靠）
 """
 
 import os
 import requests
 import json
+import urllib.parse
 import time
 from datetime import datetime
 
@@ -24,65 +22,50 @@ class TechNewsBot:
         self.session.headers.update({
             'User-Agent': 'TechNewsBot/1.0 (GitHub Actions)'
         })
-        
-        # LibreTranslate 公共实例（免费，无需Key）
-        # 如果失效，可以尝试其他实例：https://github.com/LibreTranslate/LibreTranslate#mirrors
-        self.translate_urls = [
-            "https://libretranslate.de/translate",
-            "https://translate.argosopentech.com/translate",
-            "https://libretranslate.pussthecat.org/translate"
-        ]
     
-    def translate_text(self, text, target_lang="zh"):
+    def translate_mymemory(self, text):
         """
-        翻译文本为中文（带重试机制）
+        使用 MyMemory API 翻译（免费，无需Key，每天1000次限制）
         """
         if not text or len(text.strip()) == 0:
             return text
         
-        # 如果已经是中文为主（简单判断），跳过翻译
-        if self._is_mostly_chinese(text):
+        # 如果包含中文，直接返回
+        if any('\u4e00' <= char <= '\u9fff' for char in text):
             return text
         
-        payload = {
-            "q": text,
-            "source": "en",
-            "target": target_lang,
-            "format": "text"
-        }
-        
-        # 尝试多个翻译实例
-        for url in self.translate_urls:
-            try:
-                resp = self.session.post(
-                    url, 
-                    data=payload, 
-                    timeout=15,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"}
-                )
-                if resp.status_code == 200:
-                    result = resp.json()
-                    translated = result.get("translatedText", text)
-                    print(f"✅ 翻译成功: {text[:30]}... -> {translated[:30]}...")
-                    time.sleep(0.5)  # 礼貌延迟，避免频率限制
-                    return translated
-            except Exception as e:
-                print(f"⚠️ 翻译实例 {url} 失败: {e}")
-                continue
-        
-        # 全部失败则返回原文
-        print(f"❌ 翻译失败，使用原文: {text[:30]}...")
-        return text
-    
-    def _is_mostly_chinese(self, text):
-        """简单判断文本是否主要为中文"""
-        chinese_chars = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
-        return chinese_chars > len(text) * 0.3  # 如果中文占比超30%，认为是中文
+        try:
+            # URL编码文本
+            encoded_text = urllib.parse.quote(text)
+            
+            # MyMemory API（免费版，建议加上你的邮箱以获得更高额度）
+            # 把下面的 email 参数换成你的真实邮箱（可选，但推荐）
+            url = f"https://api.mymemory.translated.net/get?q={encoded_text}&langpair=en|zh-CN&email=your.email@example.com"
+            
+            resp = self.session.get(url, timeout=15)
+            result = resp.json()
+            
+            # 检查响应状态
+            if result.get('responseStatus') == 200:
+                translated = result['responseData']['translatedText']
+                # 如果返回的是英文（有时API会返回原文），说明可能失败了
+                if translated.lower() == text.lower():
+                    print(f"⚠️ 翻译可能失败，返回原文: {text[:40]}...")
+                    return text
+                print(f"✅ 翻译: {text[:40]}... -> {translated[:40]}...")
+                time.sleep(1)  # 免费API建议间隔1秒，避免限流
+                return translated
+            else:
+                print(f"⚠️ MyMemory API 错误: {result.get('responseDetails', '未知错误')}")
+                return text
+                
+        except Exception as e:
+            print(f"❌ 翻译异常: {e}, 使用原文")
+            return text
     
     def fetch_hackernews(self, limit=10):
-        """抓取 HackerNews Top Stories 并翻译"""
+        """抓取 HackerNews 并翻译"""
         try:
-            # 获取 top stories ID 列表
             resp = self.session.get(
                 'https://hacker-news.firebaseio.com/v0/topstories.json',
                 timeout=10
@@ -94,7 +77,6 @@ class TechNewsBot:
             
             for idx, story_id in enumerate(story_ids, 1):
                 try:
-                    # 获取每个 story 的详情
                     detail_resp = self.session.get(
                         f'https://hacker-news.firebaseio.com/v0/item/{story_id}.json',
                         timeout=10
@@ -102,13 +84,13 @@ class TechNewsBot:
                     story = detail_resp.json()
                     
                     if story and story.get('title'):
-                        original_title = story['title']
-                        # 翻译标题
-                        translated_title = self.translate_text(original_title)
+                        original = story['title']
+                        # 翻译
+                        translated = self.translate_mymemory(original)
                         
                         stories.append({
-                            'title_original': original_title,
-                            'title_translated': translated_title,
+                            'title_original': original,
+                            'title_translated': translated,
                             'url': story.get('url', f'https://news.ycombinator.com/item?id={story_id}'),
                             'score': story.get('score', 0),
                             'by': story.get('by', 'unknown'),
@@ -116,7 +98,7 @@ class TechNewsBot:
                             'time': story.get('time', 0)
                         })
                         
-                        print(f"  {idx}. {translated_title}")
+                        print(f"  {idx}. {translated[:60]}...")
                         
                 except Exception as e:
                     print(f"⚠️ 处理第 {idx} 条新闻失败: {e}")
@@ -132,19 +114,18 @@ class TechNewsBot:
         """格式化消息（双语显示）"""
         today = datetime.now().strftime('%Y年%m月%d日')
         
-        content = f"## 📰 科技早报 ({today})\n\n### 🔥 HackerNews Top {len(stories)}\n\n"
+        content = f"## 📰 科技早报 ({today})\n\n### 🔥 HackerNews Top {len(stories)}（已翻译）\n\n"
         
         for i, story in enumerate(stories, 1):
             story_time = datetime.fromtimestamp(story['time'])
             time_str = story_time.strftime('%m-%d %H:%M')
             
-            # 显示格式：序号. 中文标题（原文标题）
             content += f"{i}. **{story['title_translated']}**\n"
             content += f"   📝 {story['title_original']}\n"
             content += f"   👤 {story['by']} | ⭐ {story['score']} | 💬 {story['comments']} | 🕐 {time_str}\n"
             content += f"   🔗 [阅读原文]({story['url']})\n\n"
         
-        content += f"\n---\n⏰ 推送时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n🤖 自动抓取并翻译 | GitHub Actions & Server酱"
+        content += f"\n---\n⏰ 推送时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n🤖 自动翻译推送 | GitHub Actions & MyMemory"
         
         return content
     
@@ -175,18 +156,15 @@ class TechNewsBot:
         """主运行逻辑"""
         print("🚀 开始抓取并翻译科技新闻...")
         
-        # 抓取并翻译数据
         stories = self.fetch_hackernews(10)
         
         if not stories:
             print("⚠️ 未获取到任何新闻")
             return False
         
-        # 格式化消息
         content = self.format_message(stories)
         title = f"📰 科技早报 {datetime.now().strftime('%m/%d')} | 已翻译 {len(stories)} 条"
         
-        # 推送
         print(f"📤 正在推送: {title}")
         return self.push_to_wechat(title, content)
 
